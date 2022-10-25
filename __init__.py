@@ -56,42 +56,69 @@ def open_image_in_cv(image, channels_in_output=None):
     return image
 
 
-def get_results_as_df(path_or_np, model, confidence_thresh):
+def get_results_as_df(path_or_np, models, confidence_thresh):
     asnumpy = open_image_in_cv(path_or_np)
-    results = model(asnumpy)
-    df = pd.concat(results.pandas().xywhn)
-    df = df.rename(
-        columns={
-            "xcenter": "aa_center_x",
-            "ycenter": "aa_center_y",
-            "width": "aa_width",
-            "height": "aa_heigth",
-            "confidence": "aa_confidence",
-            "class": "aa_id",
-            "name": "aa_name",
-        }
-    )
-    df["aa_img_width"] = asnumpy.shape[1]
-    df["aa_img_height"] = asnumpy.shape[0]
-    df["aa_img_abs_center_y"] = df.aa_img_height * df.aa_center_y
-    df["aa_img_abs_center_y"] = df["aa_img_abs_center_y"].astype("int")
-    df["aa_img_abs_center_x"] = df.aa_img_width * df.aa_center_x
-    df["aa_img_abs_center_x"] = df["aa_img_abs_center_x"].astype("int")
-    df["aa_img_abs_width"] = df.aa_img_width * df.aa_width
-    df["aa_img_abs_width"] = df["aa_img_abs_width"].astype(int)
-    df["aa_img_abs_height"] = df.aa_img_height * df.aa_heigth
-    df["aa_img_abs_height"] = df["aa_img_abs_height"].astype(int)
-    df["aa_haystack_start_x"] = df.aa_img_abs_center_x - df.aa_img_abs_width // 2
-    df["aa_haystack_end_x"] = df.aa_img_abs_center_x + df.aa_img_abs_width // 2
-    df["aa_haystack_start_y"] = df.aa_img_abs_center_y - df.aa_img_abs_height / 2
-    df["aa_haystack_end_y"] = df.aa_img_abs_center_y + df.aa_img_abs_height // 2
-    df.aa_haystack_start_y = df.aa_haystack_start_y.astype(int)
-    df = df.loc[df.aa_confidence >= confidence_thresh].copy()
+    allresu = []
+    for model in models:
+        results = model(asnumpy)
+        df = pd.concat(results.pandas().xywhn)
+        df = df.rename(
+            columns={
+                "xcenter": "aa_center_x",
+                "ycenter": "aa_center_y",
+                "width": "aa_width",
+                "height": "aa_heigth",
+                "confidence": "aa_confidence",
+                "class": "aa_id",
+                "name": "aa_name",
+            }
+        )
+        df["aa_img_width"] = asnumpy.shape[1]
+        df["aa_img_height"] = asnumpy.shape[0]
+        df["aa_img_abs_center_y"] = df.aa_img_height * df.aa_center_y
+        df["aa_img_abs_center_y"] = df["aa_img_abs_center_y"].astype("int")
+        df["aa_img_abs_center_x"] = df.aa_img_width * df.aa_center_x
+        df["aa_img_abs_center_x"] = df["aa_img_abs_center_x"].astype("int")
+        df["aa_img_abs_width"] = df.aa_img_width * df.aa_width
+        df["aa_img_abs_width"] = df["aa_img_abs_width"].astype(int)
+        df["aa_img_abs_height"] = df.aa_img_height * df.aa_heigth
+        df["aa_img_abs_height"] = df["aa_img_abs_height"].astype(int)
+        df["aa_haystack_start_x"] = df.aa_img_abs_center_x - df.aa_img_abs_width // 2
+        df["aa_haystack_end_x"] = df.aa_img_abs_center_x + df.aa_img_abs_width // 2
+        df["aa_haystack_start_y"] = df.aa_img_abs_center_y - df.aa_img_abs_height / 2
+        df["aa_haystack_end_y"] = df.aa_img_abs_center_y + df.aa_img_abs_height // 2
+        df.aa_haystack_start_y = df.aa_haystack_start_y.astype(int)
+        df = df.loc[df.aa_confidence >= confidence_thresh].copy()
+        allresu.append(df.copy())
+    df = pd.concat(allresu, ignore_index=True, axis=0).drop_duplicates().reset_index()
     return df
 
 
 class Yolov5WindowDetect:
     r"""
+    winca = (
+        Yolov5WindowDetect(
+            pt_file=r"C:\Users\Gamer\anaconda3\envs\dfdir\yolov5\runs\train\playerbutton7\weights\best.pt",
+            repo_or_dir="./yolov5",
+            model="custom",
+            source="local",
+        )
+        .add_models(
+            pt_file=r"C:\Users\Gamer\anaconda3\envs\dfdir\yolov5\runs\train\playerbutton6\weights\best.pt",
+            repo_or_dir="./yolov5",
+            model="custom",
+            source="local",
+        )
+        .get_hwnd_window(window_title_regex=r"[Bb]lue[sS]tacks.*")
+        .take_screenshot_and_run_yolov(
+            confidence_thresh=0.3,
+            show_results=True,
+            quit_key="q",
+            sleep_time=0.04,
+            rununtilstopped=True,
+        )
+    )
+
         winca = (
         Yolov5WindowDetect(
             pt_file=r"C:\.......\best.pt",
@@ -124,6 +151,7 @@ class Yolov5WindowDetect:
         confidence_thresh=0.3, show_results=False, rununtilstopped=False,
     ).get_results_as_df()
     """
+
     def __init__(
         self,
         pt_file: str,
@@ -131,15 +159,31 @@ class Yolov5WindowDetect:
         model: str = "custom",
         source: str = "local",
     ):
-        self.model = load_torchmodel(
-            pt_file, repo_or_dir=repo_or_dir, model=model, source=source
-        )
+        self.model = [
+            load_torchmodel(
+                pt_file, repo_or_dir=repo_or_dir, model=model, source=source
+            )
+        ]
         self.sc = None
         self.last_screenshot = None
         self.adb = False
         self.df = pd.DataFrame()
         self.quit_key = "q"
         self.stop = False
+
+    def add_models(
+        self,
+        pt_file: str,
+        repo_or_dir: str = "./yolov5",
+        model: str = "custom",
+        source: str = "local",
+    ):
+        self.model.append(
+            load_torchmodel(
+                pt_file, repo_or_dir=repo_or_dir, model=model, source=source
+            )
+        )
+        return self
 
     def get_adb_window(
         self,
@@ -198,7 +242,7 @@ class Yolov5WindowDetect:
             self.get_screenshot()
             self.df = get_results_as_df(
                 path_or_np=self.last_screenshot,
-                model=self.model,
+                models=self.model,
                 confidence_thresh=confidence_thresh,
             )
             if show_results:
@@ -252,5 +296,6 @@ class Yolov5WindowDetect:
         self.stop = False
         keyboard.clear_all_hotkeys()
         return self
+
 
 
